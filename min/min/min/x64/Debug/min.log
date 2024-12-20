@@ -1,0 +1,14 @@
+﻿  min.cpp
+C:\Users\User\Documents\Волгатех ПС - 32\ТАиФЯ\min\min\min\min.cpp(131,25): warning C4267: инициализация: преобразование из "size_t" в "int"; возможна потеря данных
+C:\Users\User\Documents\Волгатех ПС - 32\ТАиФЯ\min\min\min\min.cpp(132,25): warning C4267: инициализация: преобразование из "size_t" в "int"; возможна потеря данных
+C:\Users\User\Documents\Волгатех ПС - 32\ТАиФЯ\min\min\min\min.cpp(166,25): warning C4267: инициализация: преобразование из "size_t" в "int"; возможна потеря данных
+C:\Users\User\Documents\Волгатех ПС - 32\ТАиФЯ\min\min\min\min.cpp(167,25): warning C4267: инициализация: преобразование из "size_t" в "int"; возможна потеря данных
+C:\Users\User\Documents\Волгатех ПС - 32\ТАиФЯ\min\min\min\min.cpp(206,44): warning C4267: инициализация: преобразование из "size_t" в "int"; возможна потеря данных
+C:\Users\User\Documents\Волгатех ПС - 32\ТАиФЯ\min\min\min\min.cpp(213,79): warning C4267: =: преобразование из "size_t" в "int"; возможна потеря данных
+C:\Users\User\Documents\Волгатех ПС - 32\ТАиФЯ\min\min\min\min.cpp(221,25): warning C4267: инициализация: преобразование из "size_t" в "int"; возможна потеря данных
+C:\Users\User\Documents\Волгатех ПС - 32\ТАиФЯ\min\min\min\min.cpp(222,25): warning C4267: инициализация: преобразование из "size_t" в "int"; возможна потеря данных
+C:\Users\User\Documents\Волгатех ПС - 32\ТАиФЯ\min\min\min\min.cpp(253,25): warning C4267: инициализация: преобразование из "size_t" в "int"; возможна потеря данных
+C:\Users\User\Documents\Волгатех ПС - 32\ТАиФЯ\min\min\min\min.cpp(254,25): warning C4267: инициализация: преобразование из "size_t" в "int"; возможна потеря данных
+C:\Users\User\Documents\Волгатех ПС - 32\ТАиФЯ\min\min\min\min.cpp(326,25): warning C4267: инициализация: преобразование из "size_t" в "int"; возможна потеря данных
+C:\Users\User\Documents\Волгатех ПС - 32\ТАиФЯ\min\min\min\min.cpp(327,25): warning C4267: инициализация: преобразование из "size_t" в "int"; возможна потеря данных
+  min.vcxproj -> C:\Users\User\Documents\Волгатех ПС - 32\ТАиФЯ\min\min\x64\Debug\min.exe

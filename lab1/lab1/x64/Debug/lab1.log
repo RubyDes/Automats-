@@ -1,0 +1,11 @@
+﻿  ArgsParser.cpp
+  MealyMachineTable.cpp
+C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\14.41.34120\include\optional(11): warning STL4038: The contents of <optional> are available only with C++17 or later.
+  MooreMachineTable.cpp
+C:\Users\User\Documents\Волгатех ПС - 32\ТАиФЯ\lab1\lab1\MealyMachineTable.cpp(72,14): error C2429: для функция языка "структурированные привязки" нужен флаг компилятора "/std:c++17" 
+C:\Users\User\Documents\Волгатех ПС - 32\ТАиФЯ\lab1\lab1\MealyMachineTable.cpp(77,14): error C2530: transition: ссылки должны быть инициализированы
+C:\Users\User\Documents\Волгатех ПС - 32\ТАиФЯ\lab1\lab1\MealyMachineTable.cpp(77,14): error C3531: transition: символ, тип которого содержит спецификатор 'auto' должен иметь инициализатор
+C:\Users\User\Documents\Волгатех ПС - 32\ТАиФЯ\lab1\lab1\MealyMachineTable.cpp(77,25): error C2143: синтаксическая ошибка: отсутствие ";" перед ":"
+C:\Users\User\Documents\Волгатех ПС - 32\ТАиФЯ\lab1\lab1\MealyMachineTable.cpp(77,44): error C2143: синтаксическая ошибка: отсутствие ";" перед ")"
+C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\14.41.34120\include\optional(11): warning STL4038: The contents of <optional> are available only with C++17 or later.
+  Создание кода...
