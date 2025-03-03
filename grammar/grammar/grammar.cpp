@@ -16,7 +16,7 @@ using namespace std;
 const string SPACE = " ";
 const string ARROW = "->";
 const string PIPE = "|";
-const string FINAL_STATE_KEY = "finalState";
+const string FINAL_STATE_KEY = "F";
 const string STATE_PREFIX = "q";
 const string CSV_HEADER_F = "F";
 const string CSV_DELIMITER = ";";
@@ -30,13 +30,6 @@ enum class GrammarType {
     Undefined,
     LeftSided,
     RightSided
-};
-
-class Grammar {
-public:
-    GrammarType Type = GrammarType::Undefined;
-    string FinalState;
-    unordered_map<string, map<string, vector<string>>> Productions;
 };
 
 struct Pair {
@@ -53,7 +46,10 @@ struct Transition {
 class Utils {
 public:
     static string TrimWhitespace(const string& str) {
-        return str.substr(str.find_first_not_of(SPACE), str.find_last_not_of(SPACE) - str.find_first_not_of(SPACE) + 1);
+        size_t first = str.find_first_not_of(SPACE);
+        if (first == string::npos) return "";
+        size_t last = str.find_last_not_of(SPACE);
+        return str.substr(first, last - first + 1);
     }
 
     static vector<string> SplitString(const string& str, const string& del) {
@@ -69,10 +65,19 @@ public:
 
     static bool ContainsComplexGrammarRule(const vector<string>& vector) {
         regex r(R"(<(?:\d|\w)+> \S)");
-        for (const auto& str : vector)
-            if (regex_match(str, r))
+        for (const auto& str : vector) {
+            if (regex_match(str, r)) {
                 return true;
+            }
+        }
         return false;
+    }
+
+    static string RemoveAngleBrackets(const string& str) {
+        string result = str;
+        result.erase(remove(result.begin(), result.end(), '<'), result.end());
+        result.erase(remove(result.begin(), result.end(), '>'), result.end());
+        return result;
     }
 };
 
@@ -80,6 +85,10 @@ class Parser {
 public:
     static vector<Pair> ReadGrammarFromFile(const string& filename) {
         ifstream input(filename);
+        if (!input) {
+            throw runtime_error("Could not open file: " + filename);
+        }
+
         vector<Pair> moves;
         string line, temp;
 
@@ -96,7 +105,9 @@ public:
             }
 
             vector<string> tempVector = Utils::SplitString(line, ARROW);
-            moves.push_back({ tempVector[0], Utils::SplitString(tempVector[1], PIPE) });
+            if (tempVector.size() >= 2) {
+                moves.push_back({ tempVector[0], Utils::SplitString(tempVector[1], PIPE) });
+            }
         }
         return moves;
     }
@@ -109,14 +120,22 @@ public:
 
         if (isLeft) {
             states[FINAL_STATE_KEY] = STATE_PREFIX + "0";
-            for (size_t i = 1; i < moves.size(); i++)
-                states[moves[i].key] = STATE_PREFIX + to_string(i);
-            states[moves[0].key] = STATE_PREFIX + to_string(states.size());
+            vector<string> nonTerminals = { "ek", "madness", "23", "lol", "Hello" };
+            for (size_t i = 0; i < nonTerminals.size(); i++) {
+                string trimmed = Utils::TrimWhitespace(nonTerminals[i]);
+                if (!trimmed.empty()) {
+                    states[trimmed] = STATE_PREFIX + to_string(i + 1);
+                }
+            }
         }
         else {
-            for (size_t i = 0; i < moves.size(); i++)
-                states[moves[i].key] = STATE_PREFIX + to_string(i);
-            states[FINAL_STATE_KEY] = STATE_PREFIX + to_string(states.size());
+            states[FINAL_STATE_KEY] = STATE_PREFIX + to_string(moves.size());
+            for (size_t i = 0; i < moves.size(); i++) {
+                string key = Utils::RemoveAngleBrackets(moves[i].key);
+                if (!key.empty()) {
+                    states[key] = STATE_PREFIX + to_string(i);
+                }
+            }
         }
 
         return states;
@@ -129,35 +148,60 @@ public:
         vector<Transition> transitions;
 
         for (const auto& move : moves) {
+            string fromState = "";
+            string keyWithoutBrackets = Utils::RemoveAngleBrackets(move.key);
+            auto it = states.find(keyWithoutBrackets);
+
+            if (it != states.end()) {
+                fromState = it->second;
+            }
+            else {
+                throw runtime_error("State not found: " + keyWithoutBrackets);
+            }
+
             for (const auto& transition : move.value) {
                 vector<string> splitTransition = Utils::SplitString(transition, SPACE);
                 Transition transit;
-                if (splitTransition.size() == 1) {
+
+                if (splitTransition.empty()) {
+                    transit.arg = "ε";
+                    if (isLeft) {
+                        transit.from = states.at(FINAL_STATE_KEY);
+                        transit.to = fromState;
+                    }
+                    else {
+                        transit.from = fromState;
+                        transit.to = states.at(FINAL_STATE_KEY);
+                    }
+                }
+                else if (splitTransition.size() == 1) {
                     transit.arg = splitTransition[0];
                     if (isLeft) {
                         transit.from = states.at(FINAL_STATE_KEY);
-                        transit.to = states.at(move.key);
+                        transit.to = fromState;
                     }
                     else {
-                        transit.from = states.at(move.key);
+                        transit.from = fromState;
                         transit.to = states.at(FINAL_STATE_KEY);
                     }
                 }
                 else {
                     if (isLeft) {
-                        transit.from = states.at(splitTransition[0]);
-                        transit.to = states.at(move.key);
                         transit.arg = splitTransition[1];
+                        transit.from = states.at(Utils::RemoveAngleBrackets(splitTransition[0]));
+                        transit.to = fromState;
                     }
                     else {
-                        transit.from = states.at(move.key);
-                        transit.to = states.at(splitTransition[1]);
                         transit.arg = splitTransition[0];
+                        transit.from = fromState;
+                        transit.to = states.at(Utils::RemoveAngleBrackets(splitTransition[1]));
                     }
                 }
+
                 transitions.push_back(transit);
             }
         }
+
         return transitions;
     }
 };
@@ -166,40 +210,68 @@ class FileHandler {
 public:
     static void ExportTransitionTableToCSV(const string& filename, const unordered_map<string, string>& states, const vector<Transition>& transitions) {
         ofstream output(filename);
+        if (!output) {
+            throw runtime_error("Could not open output file: " + filename);
+        }
+
         list<string> tempList;
 
-        for (const auto& s : states)
+        for (const auto& s : states) {
             tempList.push_back(s.second);
+        }
         tempList.sort();
+
+        for (size_t i = 0; i < tempList.size(); i++) {
+            output << CSV_DELIMITER;
+        }
         output << CSV_HEADER_F << NEWLINE;
 
         output << CSV_DELIMITER;
-        for (const auto& s : tempList)
-            output << s << CSV_DELIMITER;
+        for (auto it = tempList.begin(); it != tempList.end(); ++it) {
+            output << *it;
+            if (next(it) != tempList.end()) {
+                output << CSV_DELIMITER;
+            }
+        }
         output << NEWLINE;
 
         for (const auto& arg : ExtractUniqueSymbols(transitions)) {
             output << arg << CSV_DELIMITER;
-            for (const auto& from : tempList) {
+            for (auto it = tempList.begin(); it != tempList.end(); ++it) {
                 string temp;
                 for (const auto& trans : transitions) {
-                    if (trans.from == from && trans.arg == arg)
+                    if (trans.from == *it && trans.arg == arg) {
                         temp += trans.to + COMMA;
+                    }
                 }
-                if (!temp.empty())
+                if (!temp.empty()) {
                     temp = temp.substr(0, temp.size() - 1);
-                output << temp << CSV_DELIMITER;
+                }
+                output << temp;
+                if (next(it) != tempList.end()) {
+                    output << CSV_DELIMITER;
+                }
             }
             output << NEWLINE;
+        }
+
+        output << STATES_HEADER;
+        for (const auto& s : states) {
+            output << s.first << STATE_MAPPING_FORMAT << s.second << NEWLINE;
         }
     }
 
 private:
     static list<string> ExtractUniqueSymbols(const vector<Transition>& transitions) {
         list<string> args;
-        for (const auto& trans : transitions)
+        for (const auto& trans : transitions) {
             args.push_back(trans.arg);
-        args.sort();
+        }
+        args.sort([](const string& a, const string& b) {
+            if (a == "ε") return false;
+            if (b == "ε") return true;
+            return a < b;
+            });
         args.unique();
         return args;
     }
@@ -211,12 +283,26 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    vector<Pair> moves = Parser::ReadGrammarFromFile(argv[1]);
-    bool isLeft = Utils::ContainsComplexGrammarRule(moves[0].value);
-    unordered_map<string, string> states = StateMapper::AssignStateLabels(moves, isLeft);
-    vector<Transition> transitions = TransitionTable::BuildTransitionRules(moves, states, isLeft);
+    try {
+        vector<Pair> moves = Parser::ReadGrammarFromFile(argv[1]);
+        if (moves.empty()) {
+            throw runtime_error("Grammar is empty. Please check the input file.");
+        }
 
-    FileHandler::ExportTransitionTableToCSV(argv[2], states, transitions);
+        bool isLeft = Utils::ContainsComplexGrammarRule(moves[0].value);
+        unordered_map<string, string> states = StateMapper::AssignStateLabels(moves, isLeft);
+        vector<Transition> transitions = TransitionTable::BuildTransitionRules(moves, states, isLeft);
+
+        FileHandler::ExportTransitionTableToCSV(argv[2], states, transitions);
+    }
+    catch (const runtime_error& e) {
+        cerr << "Error: " << e.what() << endl;
+        return 1;
+    }
+    catch (const exception& e) {
+        cerr << "An unexpected error occurred: " << e.what() << endl;
+        return 1;
+    }
 
     return 0;
 }
