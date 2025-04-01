@@ -1,6 +1,7 @@
 import csv
 import sys
 from collections import defaultdict
+import os
 
 class RegexTreeNode:
     def __init__(self, val, l_child=None, r_child=None):
@@ -153,8 +154,8 @@ def nfa_to_dfa(nfa):
     is_final = any(state == nfa.final_state for state in initial_closure)
     dfa_states.append({
         "name": "S0",
-        "states": initial_closure,
-        "is_final": is_final
+        "is_final": is_final,
+        "transitions": {}
     })
     
     while unprocessed_states:
@@ -164,8 +165,6 @@ def nfa_to_dfa(nfa):
         symbols = set()
         for state in current_states:
             symbols.update(state.symbol_transitions.keys())
-        
-        transitions = {}
         
         for symbol in symbols:
             next_states = set()
@@ -184,58 +183,54 @@ def nfa_to_dfa(nfa):
                 is_final = any(state == nfa.final_state for state in next_states)
                 dfa_states.append({
                     "name": new_state_name,
-                    "states": next_states,
-                    "is_final": is_final
+                    "is_final": is_final,
+                    "transitions": {}
                 })
                 unprocessed_states.append(next_states)
             
-            transitions[symbol] = dfa_state_map[frozen_next]
-        
-        dfa_transitions.append({
-            "from": current_state_name,
-            "transitions": transitions
-        })
+            dfa_states[dfa_state_map[frozenset(current_states)]]["transitions"][symbol] = dfa_state_map[frozen_next]
     
-    return dfa_states, dfa_transitions
+    return dfa_states
 
-def save_dfa_to_csv(dfa_states, dfa_transitions, output_file):
+def save_dfa_to_csv(dfa_states, output_file):
+    # Create _tmp directory if it doesn't exist
+    os.makedirs(os.path.dirname(output_file), exist_ok=True)
+    
+    # Collect all symbols
     symbols = set()
-    for transition in dfa_transitions:
-        symbols.update(transition["transitions"].keys())
+    for state in dfa_states:
+        symbols.update(state["transitions"].keys())
     symbols = sorted(symbols)
     
-    # Create transition table
-    table = []
-    for state in dfa_states:
-        row = {"State": state["name"], "Final": "F" if state["is_final"] else ""}
-        for symbol in symbols:
-            row[symbol] = "-"
-            for transition in dfa_transitions:
-                if transition["from"] == state["name"] and symbol in transition["transitions"]:
-                    row[symbol] = transition["transitions"][symbol]
-                    break
-        table.append(row)
-    
-    # Write to CSV
-    with open(output_file, "w", newline="", encoding="utf-8") as csvfile:
-        writer = csv.DictWriter(csvfile, fieldnames=["State", "Final"] + symbols, delimiter=";")
-        writer.writeheader()
-        writer.writerows(table)
+    # Write CSV file
+    with open(output_file, "w", newline="") as csvfile:
+        writer = csv.writer(csvfile, delimiter=";")
+        
+        # Write header
+        writer.writerow(["State"] + symbols + ["Final"])
+        
+        # Write states
+        for state in dfa_states:
+            row = [state["name"]]
+            for symbol in symbols:
+                row.append(state["transitions"].get(symbol, "-"))
+            row.append("F" if state["is_final"] else "")
+            writer.writerow(row)
 
 def main():
     if len(sys.argv) < 2:
-        print("Usage: python regex.py <regex_pattern> [output_csv]")
+        print("Usage: python regex.py <regex_pattern>")
         return 1
 
     regex_pattern = sys.argv[1]
-    output_csv = sys.argv[2] if len(sys.argv) > 2 else "output.csv"
+    output_file = "_tmp/output.csv"  # Fixed output path
 
     try:
         tree = regex_to_tree(regex_pattern)
         nfa = construct_automaton(tree)
-        dfa_states, dfa_transitions = nfa_to_dfa(nfa)
-        save_dfa_to_csv(dfa_states, dfa_transitions, output_csv)
-        print(f"DFA saved to {output_csv}")
+        dfa_states = nfa_to_dfa(nfa)
+        save_dfa_to_csv(dfa_states, output_file)
+        print(f"DFA saved to {output_file}")
     except Exception as e:
         print(f"Error: {str(e)}")
         return 1
