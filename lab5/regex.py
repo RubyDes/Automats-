@@ -1,11 +1,14 @@
 import sys
 import csv
 import os
-from collections import defaultdict
+from collections import defaultdict, OrderedDict
 
 class State:
-    def __init__(self, name):
-        self.name = name
+    _counter = 0
+    
+    def __init__(self):
+        self.name = f"S{State._counter}"
+        State._counter += 1
         self.transitions = defaultdict(list)
         self.is_final = False
 
@@ -27,8 +30,8 @@ def parse_regex(regex):
             if i >= len(regex):
                 raise ValueError("Invalid escape sequence")
             c = regex[i]
-            s1 = State(c)
-            s2 = State(c)
+            s1 = State()
+            s2 = State()
             s1.transitions[c].append(s2)
             stack.append(NFA(s1, s2))
         elif c == '(':
@@ -44,7 +47,7 @@ def parse_regex(regex):
             
             # Handle empty parentheses ()
             if not nfas:
-                empty = State('ε')
+                empty = State()
                 stack.append(NFA(empty, empty))
                 i += 1
                 continue
@@ -64,8 +67,8 @@ def parse_regex(regex):
                 raise ValueError(f"Nothing to repeat with '{c}'")
             nfa = stack.pop()
             
-            new_start = State('ε')
-            new_end = State('ε')
+            new_start = State()
+            new_end = State()
             
             if c == '*':
                 new_start.transitions['ε'].append(nfa.start)
@@ -84,14 +87,14 @@ def parse_regex(regex):
             nfa.end.is_final = False
             stack.append(NFA(new_start, new_end))
         else:
-            s1 = State(c)
-            s2 = State(c)
+            s1 = State()
+            s2 = State()
             s1.transitions[c].append(s2)
             stack.append(NFA(s1, s2))
         
         i += 1
     
-    # Process remaining concatenations
+    # Process remaining concatenations and alternations
     while len(stack) > 1:
         top = stack.pop()
         if top == '|':
@@ -102,8 +105,8 @@ def parse_regex(regex):
             stack.pop()  # Remove '|'
             left = stack.pop()
             
-            new_start = State('ε')
-            new_end = State('ε')
+            new_start = State()
+            new_end = State()
             new_start.transitions['ε'].append(left.start)
             new_start.transitions['ε'].append(right.start)
             left.end.transitions['ε'].append(new_end)
@@ -124,45 +127,36 @@ def parse_regex(regex):
     return stack[-1]
 
 def save_nfa_to_csv(nfa, filename):
-    # Collect all states and transitions
-    visited = set()
+    # Collect all states with BFS
+    visited = OrderedDict()
     queue = [nfa.start]
-    states = []
-    transitions = []
-    state_names = {}
-    counter = 0
     
     while queue:
         state = queue.pop(0)
         if state in visited:
             continue
-        visited.add(state)
+        visited[state] = True
         
-        # Assign state name if not assigned
-        if state not in state_names:
-            state_names[state] = f"S{counter}"
-            counter += 1
-        
-        # Collect transitions
-        for symbol, targets in state.transitions.items():
+        for _, targets in state.transitions.items():
             for target in targets:
-                if target not in state_names:
-                    state_names[target] = f"S{counter}"
-                    counter += 1
-                transitions.append((state_names[state], symbol, state_names[target]))
                 if target not in visited:
                     queue.append(target)
     
-    # Get all unique symbols
+    # Get all unique symbols (excluding ε)
     symbols = set()
-    for _, symbol, _ in transitions:
-        symbols.add(symbol)
-    symbols = sorted(symbols - {'ε'})
+    for state in visited:
+        symbols.update(state.transitions.keys())
+    symbols.discard('ε')
+    symbols = sorted(symbols)
     
-    # Group transitions by from_state and symbol
-    transition_map = defaultdict(lambda: defaultdict(list))
-    for from_state, symbol, to_state in transitions:
-        transition_map[from_state][symbol].append(to_state)
+    # Create transition map
+    transition_map = {}
+    for state in visited:
+        trans = {}
+        for symbol in symbols:
+            targets = state.transitions.get(symbol, [])
+            trans[symbol] = ",".join(sorted(t.name for t in targets)) if targets else "-"
+        transition_map[state.name] = trans
     
     # Create output directory if needed
     os.makedirs(os.path.dirname(filename) or '.', exist_ok=True)
@@ -173,19 +167,12 @@ def save_nfa_to_csv(nfa, filename):
         # Write header
         writer.writerow(['State'] + symbols + ['Final'])
         
-        # Write states
-        for state in sorted(state_names.values()):
-            row = [state]
-            
-            # Add transitions for each symbol
+        # Write states in order they were visited
+        for state in visited:
+            row = [state.name]
             for symbol in symbols:
-                targets = transition_map[state].get(symbol, [])
-                row.append(','.join(sorted(targets)) if targets else '-')
-            
-            # Add final state marker
-            final_state = next(s for s in state_names if state_names[s] == state)
-            row.append('F' if final_state.is_final else '')
-            
+                row.append(transition_map[state.name][symbol])
+            row.append('F' if state.is_final else '')
             writer.writerow(row)
 
 def main():
@@ -197,6 +184,9 @@ def main():
     regex_pattern = sys.argv[2]
     
     try:
+        # Reset state counter for each run
+        State._counter = 0
+        
         nfa = parse_regex(regex_pattern)
         save_nfa_to_csv(nfa, output_file)
         print(f"NFA saved to {output_file}")
