@@ -1,4 +1,0 @@
-﻿  determine.cpp
-C:\Users\User\Documents\Волгатех ПС - 32\ТАиФЯ\determine\determine\determine\determine.cpp(213,30): warning C4244: инициализация: преобразование "__int64" в "int", возможна потеря данных
-C:\Users\User\Documents\Волгатех ПС - 32\ТАиФЯ\determine\determine\determine\determine.cpp(228,34): warning C4267: =: преобразование из "size_t" в "int"; возможна потеря данных
-  determine.vcxproj -> C:\Users\User\Documents\Волгатех ПС - 32\ТАиФЯ\determine\determine\x64\Debug\determine.exe
