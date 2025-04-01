@@ -1,240 +1,220 @@
 import csv
 import sys
-from collections import defaultdict
 import os
+from collections import defaultdict
 
-class RegexTreeNode:
-    def __init__(self, val, l_child=None, r_child=None):
-        self.val = val
-        self.l_child = l_child
-        self.r_child = r_child
+class State:
+    def __init__(self, name):
+        self.name = name
+        self.is_final = False
+        self.transitions = defaultdict(list)
 
-    def __repr__(self):
-        return f"RegexTreeNode({self.val})"
+class NFA:
+    def __init__(self, start, end):
+        self.start = start
+        self.end = end
 
-class AutomatonState:
-    def __init__(self):
-        self.symbol_transitions = {}
-        self.epsilon_transitions = []
-
-    def add_symbol_transition(self, symbol, target_state):
-        if symbol not in self.symbol_transitions:
-            self.symbol_transitions[symbol] = []
-        self.symbol_transitions[symbol].append(target_state)
-
-    def add_epsilon_transition(self, target_state):
-        self.epsilon_transitions.append(target_state)
-
-class FiniteAutomaton:
-    def __init__(self, initial_state, final_state):
-        self.initial_state = initial_state
-        self.final_state = final_state
-
-def is_regular_char(char):
-    return char not in "+*()|"
-
-def regex_to_tree(expression):
-    def parse(tokens):
-        def next_token():
-            return tokens.pop(0) if tokens else None
-
-        def parse_simple():
-            token = next_token()
-            if token == "\\":
-                escaped = next_token()
-                if is_regular_char(escaped):
-                    tokens.insert(0, escaped)
-                else:
-                    return RegexTreeNode(escaped)
-            if is_regular_char(token):
-                return RegexTreeNode(token)
-            elif token == "(":
-                node = parse_expr()
-                if next_token() != ")":
-                    raise ValueError("Mismatched parentheses")
-                return node
-            raise ValueError(f"Unexpected token: {token}")
-
-        def parse_element():
-            node = parse_simple()
-            while tokens and tokens[0] in ("*", "+"):
-                op = "repeat" if next_token() == "*" else "plus"
-                node = RegexTreeNode(op, l_child=node)
-            return node
-
-        def parse_sequence():
-            node = parse_element()
-            while tokens and tokens[0] and (is_regular_char(tokens[0]) or tokens[0] == "("):
-                right = parse_element()
-                node = RegexTreeNode("sequence", l_child=node, r_child=right)
-            return node
-
-        def parse_expr():
-            node = parse_sequence()
-            while tokens and tokens[0] == "|":
-                next_token()
-                right = parse_sequence()
-                node = RegexTreeNode("choice", l_child=node, r_child=right)
-            return node
-
-        return parse_expr()
-
-    tokens = []
-    for char in expression:
-        tokens.append(char)
-
-    return parse(tokens)
-
-def construct_automaton(node):
-    if node is None:
-        return None
-
-    if node.val not in ("sequence", "choice", "plus", "repeat"):
-        start = AutomatonState()
-        accept = AutomatonState()
-        start.add_symbol_transition(node.val, accept)
-        return FiniteAutomaton(start, accept)
-    elif node.val == "sequence":
-        left_automaton = construct_automaton(node.l_child)
-        right_automaton = construct_automaton(node.r_child)
-        left_automaton.final_state.add_epsilon_transition(right_automaton.initial_state)
-        return FiniteAutomaton(left_automaton.initial_state, right_automaton.final_state)
-    elif node.val == "choice":
-        start = AutomatonState()
-        accept = AutomatonState()
-        left_automaton = construct_automaton(node.l_child)
-        right_automaton = construct_automaton(node.r_child)
-        start.add_epsilon_transition(left_automaton.initial_state)
-        start.add_epsilon_transition(right_automaton.initial_state)
-        left_automaton.final_state.add_epsilon_transition(accept)
-        right_automaton.final_state.add_epsilon_transition(accept)
-        return FiniteAutomaton(start, accept)
-    elif node.val == "repeat":
-        start = AutomatonState()
-        accept = AutomatonState()
-        sub_automaton = construct_automaton(node.l_child)
-        start.add_epsilon_transition(sub_automaton.initial_state)
-        start.add_epsilon_transition(accept)
-        sub_automaton.final_state.add_epsilon_transition(sub_automaton.initial_state)
-        sub_automaton.final_state.add_epsilon_transition(accept)
-        return FiniteAutomaton(start, accept)
-    elif node.val == "plus":
-        start = AutomatonState()
-        accept = AutomatonState()
-        sub_automaton = construct_automaton(node.l_child)
-        start.add_epsilon_transition(sub_automaton.initial_state)
-        sub_automaton.final_state.add_epsilon_transition(sub_automaton.initial_state)
-        sub_automaton.final_state.add_epsilon_transition(accept)
-        return FiniteAutomaton(start, accept)
-
-    raise ValueError(f"Unexpected node value: {node.val}")
-
-def epsilon_closure(state, visited=None):
-    if visited is None:
-        visited = set()
+def regex_to_nfa(regex):
+    stack = []
+    i = 0
+    n = len(regex)
     
-    if state in visited:
-        return set()
+    while i < n:
+        char = regex[i]
+        
+        if char == '\\':
+            i += 1
+            if i >= n:
+                raise ValueError("Invalid escape sequence")
+            char = regex[i]
+            s1 = State(char)
+            s2 = State(char)
+            s1.transitions[char].append(s2)
+            stack.append(NFA(s1, s2))
+            i += 1
+            continue
+            
+        if char == '(':
+            stack.append(char)
+        elif char == ')':
+            nfas = []
+            while stack and stack[-1] != '(':
+                nfas.append(stack.pop())
+            if not stack:
+                raise ValueError("Mismatched parentheses")
+            stack.pop()  # Remove '('
+            
+            # Handle concatenation
+            while len(nfas) > 1:
+                nfa2 = nfas.pop()
+                nfa1 = nfas.pop()
+                nfa1.end.transitions['ε'].append(nfa2.start)
+                nfas.append(NFA(nfa1.start, nfa2.end))
+            
+            if not nfas:
+                raise ValueError("Empty parentheses")
+                
+            stack.append(nfas[0])
+        elif char == '|':
+            stack.append(char)
+        elif char in ['*', '+', '?']:
+            if not stack or isinstance(stack[-1], str):
+                raise ValueError(f"Invalid operator {char}")
+            nfa = stack.pop()
+            
+            new_start = State('ε')
+            new_end = State('ε')
+            
+            if char == '*':
+                new_start.transitions['ε'].append(nfa.start)
+                new_start.transitions['ε'].append(new_end)
+                nfa.end.transitions['ε'].append(nfa.start)
+                nfa.end.transitions['ε'].append(new_end)
+            elif char == '+':
+                new_start.transitions['ε'].append(nfa.start)
+                nfa.end.transitions['ε'].append(nfa.start)
+                nfa.end.transitions['ε'].append(new_end)
+            elif char == '?':
+                new_start.transitions['ε'].append(nfa.start)
+                new_start.transitions['ε'].append(new_end)
+                nfa.end.transitions['ε'].append(new_end)
+                
+            stack.append(NFA(new_start, new_end))
+        else:
+            s1 = State(char)
+            s2 = State(char)
+            s1.transitions[char].append(s2)
+            stack.append(NFA(s1, s2))
+        
+        i += 1
     
-    visited.add(state)
-    closure = {state}
+    # Process remaining concatenations
+    while len(stack) > 1:
+        top = stack.pop()
+        if isinstance(top, str):
+            raise ValueError("Invalid regex pattern")
+        next_top = stack.pop()
+        if isinstance(next_top, str):
+            raise ValueError("Invalid regex pattern")
+        
+        next_top.end.transitions['ε'].append(top.start)
+        stack.append(NFA(next_top.start, top.end))
     
-    for epsilon_state in state.epsilon_transitions:
-        closure.update(epsilon_closure(epsilon_state, visited))
+    if not stack or isinstance(stack[-1], str):
+        raise ValueError("Invalid regex pattern")
     
-    return closure
+    final_nfa = stack[-1]
+    final_nfa.end.is_final = True
+    return final_nfa
 
 def nfa_to_dfa(nfa):
-    initial_closure = epsilon_closure(nfa.initial_state)
-    dfa_states = []
-    dfa_transitions = []
-    unprocessed_states = [initial_closure]
-    dfa_state_map = {frozenset(initial_closure): "S0"}
+    def epsilon_closure(states):
+        closure = set(states)
+        stack = list(states)
+        
+        while stack:
+            state = stack.pop()
+            for next_state in state.transitions.get('ε', []):
+                if next_state not in closure:
+                    closure.add(next_state)
+                    stack.append(next_state)
+        
+        return frozenset(closure)
     
-    is_final = any(state == nfa.final_state for state in initial_closure)
+    initial_closure = epsilon_closure({nfa.start})
+    dfa_states = []
+    state_queue = [initial_closure]
+    state_map = {initial_closure: 'S0'}
+    
     dfa_states.append({
-        "name": "S0",
-        "is_final": is_final,
-        "transitions": {}
+        'name': 'S0',
+        'states': initial_closure,
+        'is_final': any(s.is_final for s in initial_closure),
+        'transitions': {}
     })
     
-    while unprocessed_states:
-        current_states = unprocessed_states.pop(0)
-        current_state_name = dfa_state_map[frozenset(current_states)]
-
+    while state_queue:
+        current_states = state_queue.pop(0)
+        current_name = state_map[current_states]
+        
+        # Find all unique symbols (excluding ε)
         symbols = set()
         for state in current_states:
-            symbols.update(state.symbol_transitions.keys())
+            symbols.update(state.transitions.keys())
+        symbols.discard('ε')
         
-        for symbol in symbols:
+        for symbol in sorted(symbols):
+            # Move to next states on this symbol
             next_states = set()
             for state in current_states:
-                if symbol in state.symbol_transitions:
-                    for target in state.symbol_transitions[symbol]:
-                        next_states.update(epsilon_closure(target))
+                if symbol in state.transitions:
+                    next_states.update(state.transitions[symbol])
             
             if not next_states:
                 continue
+                
+            closure = epsilon_closure(next_states)
             
-            frozen_next = frozenset(next_states)
-            if frozen_next not in dfa_state_map:
-                new_state_name = f"S{len(dfa_state_map)}"
-                dfa_state_map[frozen_next] = new_state_name
-                is_final = any(state == nfa.final_state for state in next_states)
+            if closure not in state_map:
+                new_name = f'S{len(state_map)}'
+                state_map[closure] = new_name
                 dfa_states.append({
-                    "name": new_state_name,
-                    "is_final": is_final,
-                    "transitions": {}
+                    'name': new_name,
+                    'states': closure,
+                    'is_final': any(s.is_final for s in closure),
+                    'transitions': {}
                 })
-                unprocessed_states.append(next_states)
+                state_queue.append(closure)
             
-            dfa_states[dfa_state_map[frozenset(current_states)]]["transitions"][symbol] = dfa_state_map[frozen_next]
+            # Find the current state in dfa_states
+            for state in dfa_states:
+                if state['name'] == current_name:
+                    state['transitions'][symbol] = state_map[closure]
+                    break
     
     return dfa_states
 
-def save_dfa_to_csv(dfa_states, output_file):
-    # Create _tmp directory if it doesn't exist
-    os.makedirs(os.path.dirname(output_file), exist_ok=True)
-    
-    # Collect all symbols
+def save_dfa_to_csv(dfa_states, filename):
+    # Get all unique symbols
     symbols = set()
     for state in dfa_states:
-        symbols.update(state["transitions"].keys())
+        symbols.update(state['transitions'].keys())
     symbols = sorted(symbols)
     
-    # Write CSV file
-    with open(output_file, "w", newline="") as csvfile:
-        writer = csv.writer(csvfile, delimiter=";")
+    # Create output directory if needed
+    os.makedirs(os.path.dirname(filename) or '.', exist_ok=True)
+    
+    with open(filename, 'w', newline='') as f:
+        writer = csv.writer(f, delimiter=';')
         
         # Write header
-        writer.writerow(["State"] + symbols + ["Final"])
+        writer.writerow(['State'] + symbols + ['Final'])
         
-        # Write states
+        # Write each state
         for state in dfa_states:
-            row = [state["name"]]
+            row = [state['name']]
             for symbol in symbols:
-                row.append(state["transitions"].get(symbol, "-"))
-            row.append("F" if state["is_final"] else "")
+                row.append(state['transitions'].get(symbol, '-'))
+            row.append('F' if state['is_final'] else '')
             writer.writerow(row)
 
 def main():
     if len(sys.argv) < 2:
-        print("Usage: python regex.py <regex_pattern>")
+        print("Usage: python regex_to_dfa.py <regex_pattern> [output_file]")
         return 1
-
-    regex_pattern = sys.argv[1]
-    output_file = "_tmp/output.csv"  # Fixed output path
-
+    
+    regex = sys.argv[1]
+    output_file = sys.argv[2] if len(sys.argv) > 2 else '_tmp/output.csv'
+    
     try:
-        tree = regex_to_tree(regex_pattern)
-        nfa = construct_automaton(tree)
+        nfa = regex_to_nfa(regex)
         dfa_states = nfa_to_dfa(nfa)
         save_dfa_to_csv(dfa_states, output_file)
         print(f"DFA saved to {output_file}")
     except Exception as e:
-        print(f"Error: {str(e)}")
+        print(f"Error: {e}")
         return 1
-
+    
     return 0
 
 if __name__ == "__main__":
