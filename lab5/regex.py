@@ -1,8 +1,7 @@
 import csv
 import sys
-from graphviz import Digraph
+import json
 from collections import defaultdict
-
 
 class RegexTreeNode:
     def __init__(self, val, l_child=None, r_child=None):
@@ -12,7 +11,6 @@ class RegexTreeNode:
 
     def __repr__(self):
         return f"RegexTreeNode({self.val})"
-
 
 class AutomatonState:
     def __init__(self):
@@ -27,16 +25,13 @@ class AutomatonState:
     def add_epsilon_transition(self, target_state):
         self.epsilon_transitions.append(target_state)
 
-
 class FiniteAutomaton:
     def __init__(self, initial_state, final_state):
         self.initial_state = initial_state
         self.final_state = final_state
 
-
 def is_regular_char(char):
     return char not in "+*()|"
-
 
 def regex_to_tree(expression):
     def parse(tokens):
@@ -90,7 +85,6 @@ def regex_to_tree(expression):
 
     return parse(tokens)
 
-
 def construct_automaton(node):
     if node is None:
         return None
@@ -135,7 +129,6 @@ def construct_automaton(node):
 
     raise ValueError(f"Unexpected node value: {node.val}")
 
-
 def epsilon_closure(state, visited=None):
     if visited is None:
         visited = set()
@@ -150,7 +143,6 @@ def epsilon_closure(state, visited=None):
         closure.update(epsilon_closure(epsilon_state, visited))
     
     return closure
-
 
 def nfa_to_dfa(nfa):
     initial_closure = epsilon_closure(nfa.initial_state)
@@ -207,7 +199,6 @@ def nfa_to_dfa(nfa):
     
     return dfa_states, dfa_transitions
 
-
 def save_dfa_to_csv(dfa_states, dfa_transitions, output_file):
     symbols = set()
     for transition in dfa_transitions:
@@ -244,72 +235,55 @@ def save_dfa_to_csv(dfa_states, dfa_transitions, output_file):
         writer.writerow(state_names)
         writer.writerows(transition_rows)
 
-
-def visualize_dfa(dfa_states, dfa_transitions, output_file=None):
-    dot = Digraph(comment='DFA', format='png')
-    dot.attr(rankdir='LR')
-
+def print_dfa_text(dfa_states, dfa_transitions):
+    print("\nDFA States:")
     for state in dfa_states:
-        if state["is_final"]:
-            dot.node(state["name"], shape='doublecircle')
-        else:
-            dot.node(state["name"], shape='circle')
+        print(f"  {state['name']} {'(final)' if state['is_final'] else ''}")
 
-    initial_state = "S0"
-    dot.node('start', shape='point')
-    dot.edge('start', initial_state)
-
-    transitions_map = defaultdict(dict)
+    print("\nDFA Transitions:")
     for transition in dfa_transitions:
         from_state = transition["from"]
         for symbol, to_state in transition["transitions"].items():
-            if symbol in transitions_map[(from_state, to_state)]:
-                transitions_map[(from_state, to_state)][symbol] += f",{symbol}"
-            else:
-                transitions_map[(from_state, to_state)][symbol] = symbol
-    
-    for (from_state, to_state), symbols in transitions_map.items():
-        label = ",".join(sorted(symbols.keys()))
-        dot.edge(from_state, to_state, label=label)
-    
-    if output_file:
-        dot.render(output_file, view=True)
-    else:
-        return dot
+            print(f"  {from_state} --[{symbol}]--> {to_state}")
 
+def save_dfa_to_json(dfa_states, dfa_transitions, output_file):
+    dfa = {
+        "states": dfa_states,
+        "transitions": dfa_transitions
+    }
+    with open(output_file, "w", encoding="utf-8") as f:
+        json.dump(dfa, f, indent=2)
 
-def process_regex_pattern(regex, output_csv=None, output_image=None):
+def process_regex_pattern(regex, output_csv=None, output_json=None):
     tree = regex_to_tree(regex)
     nfa = construct_automaton(tree)
     
     dfa_states, dfa_transitions = nfa_to_dfa(nfa)
     
+    print_dfa_text(dfa_states, dfa_transitions)  # Текстовый вывод в консоль
+    
     if output_csv:
         save_dfa_to_csv(dfa_states, dfa_transitions, output_csv)
     
-    if output_image:
-        visualize_dfa(dfa_states, dfa_transitions, output_image)
-    else:
-        return visualize_dfa(dfa_states, dfa_transitions)
-
+    if output_json:
+        save_dfa_to_json(dfa_states, dfa_transitions, output_json)
 
 def main():
     if len(sys.argv) < 2:
-        print(f"Usage: {sys.argv[0]} <regex pattern> [output_csv] [output_image]")
+        print(f"Usage: {sys.argv[0]} <regex pattern> [output_csv] [output_json]")
         return 1
 
     regex_pattern = sys.argv[1]
     output_csv = sys.argv[2] if len(sys.argv) > 2 else None
-    output_image = sys.argv[3] if len(sys.argv) > 3 else None
+    output_json = sys.argv[3] if len(sys.argv) > 3 else None
 
     try:
-        process_regex_pattern(regex_pattern, output_csv, output_image)
+        process_regex_pattern(regex_pattern, output_csv, output_json)
     except Exception as e:
         print(f"Error: {str(e)}")
         return 1
  
     return 0
-
 
 if __name__ == "__main__":
     sys.exit(main())
