@@ -1,6 +1,5 @@
 import csv
 import sys
-import json
 from collections import defaultdict
 
 class RegexTreeNode:
@@ -205,84 +204,42 @@ def save_dfa_to_csv(dfa_states, dfa_transitions, output_file):
         symbols.update(transition["transitions"].keys())
     symbols = sorted(symbols)
     
-    headers = [""]
-    finals = [""]
-    state_names = [""]
-    
+    # Create transition table
+    table = []
     for state in dfa_states:
-        headers.append("F" if state["is_final"] else "")
-        finals.append(state["name"])
-        state_names.append(state["name"])
-    
-    transition_rows = []
-    for symbol in symbols:
-        row = [symbol]
-        for state in dfa_states:
-            found = False
+        row = {"State": state["name"], "Final": "F" if state["is_final"] else ""}
+        for symbol in symbols:
+            row[symbol] = "-"
             for transition in dfa_transitions:
                 if transition["from"] == state["name"] and symbol in transition["transitions"]:
-                    row.append(transition["transitions"][symbol])
-                    found = True
+                    row[symbol] = transition["transitions"][symbol]
                     break
-            if not found:
-                row.append("-")
-        transition_rows.append(row)
+        table.append(row)
     
+    # Write to CSV
     with open(output_file, "w", newline="", encoding="utf-8") as csvfile:
-        writer = csv.writer(csvfile, delimiter=";")
-        writer.writerow(headers)
-        writer.writerow(finals)
-        writer.writerow(state_names)
-        writer.writerows(transition_rows)
-
-def print_dfa_text(dfa_states, dfa_transitions):
-    print("\nDFA States:")
-    for state in dfa_states:
-        print(f"  {state['name']} {'(final)' if state['is_final'] else ''}")
-
-    print("\nDFA Transitions:")
-    for transition in dfa_transitions:
-        from_state = transition["from"]
-        for symbol, to_state in transition["transitions"].items():
-            print(f"  {from_state} --[{symbol}]--> {to_state}")
-
-def save_dfa_to_json(dfa_states, dfa_transitions, output_file):
-    dfa = {
-        "states": dfa_states,
-        "transitions": dfa_transitions
-    }
-    with open(output_file, "w", encoding="utf-8") as f:
-        json.dump(dfa, f, indent=2)
-
-def process_regex_pattern(regex, output_csv=None, output_json=None):
-    tree = regex_to_tree(regex)
-    nfa = construct_automaton(tree)
-    
-    dfa_states, dfa_transitions = nfa_to_dfa(nfa)
-    
-    print_dfa_text(dfa_states, dfa_transitions)  # Текстовый вывод в консоль
-    
-    if output_csv:
-        save_dfa_to_csv(dfa_states, dfa_transitions, output_csv)
-    
-    if output_json:
-        save_dfa_to_json(dfa_states, dfa_transitions, output_json)
+        writer = csv.DictWriter(csvfile, fieldnames=["State", "Final"] + symbols, delimiter=";")
+        writer.writeheader()
+        writer.writerows(table)
 
 def main():
     if len(sys.argv) < 2:
-        print(f"Usage: {sys.argv[0]} <regex pattern> [output_csv] [output_json]")
+        print("Usage: python regex.py <regex_pattern> [output_csv]")
         return 1
 
     regex_pattern = sys.argv[1]
-    output_csv = sys.argv[2] if len(sys.argv) > 2 else None
-    output_json = sys.argv[3] if len(sys.argv) > 3 else None
+    output_csv = sys.argv[2] if len(sys.argv) > 2 else "output.csv"
 
     try:
-        process_regex_pattern(regex_pattern, output_csv, output_json)
+        tree = regex_to_tree(regex_pattern)
+        nfa = construct_automaton(tree)
+        dfa_states, dfa_transitions = nfa_to_dfa(nfa)
+        save_dfa_to_csv(dfa_states, dfa_transitions, output_csv)
+        print(f"DFA saved to {output_csv}")
     except Exception as e:
         print(f"Error: {str(e)}")
         return 1
- 
+
     return 0
 
 if __name__ == "__main__":
