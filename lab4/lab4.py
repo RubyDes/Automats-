@@ -164,7 +164,7 @@ def handle_machine(ecloses, input_table, output_table, e_str):
                 pass
 
 def create_ecloses(ecloses, input_table, e_str):
-    if input_table[-1][0] == "e":
+    if input_table[-1][0].lower() in ("e", "ε"):  # Поддержка и "e", и "ε"
         e_str = len(input_table) - 1
     else:
         return False
