@@ -18,7 +18,7 @@ class State:
 
 def read_table(input_file):
     input_table = []
-    with open(input_file, 'r') as f:
+    with open(input_file, 'r', encoding='utf-8') as f:
         for line in f:
             line = line.strip()
             if line.endswith(';'):
@@ -29,143 +29,163 @@ def read_table(input_file):
     return input_table
 
 def write_table(output_file, output_table):
-    with open(output_file, 'w') as f:
+    with open(output_file, 'w', encoding='utf-8') as f:
         for row in output_table:
-            # Заменяем все None и "-" на пустые строки
-            cleaned_row = [cell if cell not in ["-", None] else "" for cell in row]
-            f.write(";".join(cleaned_row) + "\n")
+            f.write(";".join(row) + "\n")
 
 def is_in_vector(all_states_vector, new_vector, ecloses, name):
     if not all_states_vector:
         return False
 
+    # Создаем временную копию для обработки
+    temp_vector = new_vector.copy()
     i = 0
-    while i < len(new_vector):
-        if new_vector[i] == "":
-            del new_vector[i]
+    while i < len(temp_vector):
+        if temp_vector[i] == "":
+            del temp_vector[i]
             continue
-        if new_vector[i] not in ecloses:
+        if temp_vector[i] not in ecloses:
             i += 1
             continue
-        for e_state in ecloses[new_vector[i]].eStates:
-            if e_state not in new_vector:
-                new_vector.append(e_state)
+        for e_state in ecloses[temp_vector[i]].eStates:
+            if e_state not in temp_vector:
+                temp_vector.append(e_state)
                 name += e_state
         i += 1
 
     for states, state_name in all_states_vector.items():
-        if len(states) == len(new_vector) and sorted(states) == sorted(new_vector):
+        if set(states) == set(temp_vector):
             new_vector.clear()
-            new_vector.extend(states)
+            new_vector.extend(temp_vector)
             return True
 
     return False
 
 def create_transitions(ecloses, input_table, output_table, e_str, line, column, output_state):
     if not output_state.transitions:
-        for i in range(2, len(input_table) - 1):
-            str_vector = []
-            if input_table[i][column] == "":
-                output_state.transitions.append(str_vector)
-                output_state.transitionsName.append("")
-                continue
-
-            items = input_table[i][column].split(',')
+        # Инициализация переходов
+        for _ in range(len(input_table)-3):  # Количество символов (строки кроме заголовков)
+            output_state.transitions.append([])
             output_state.transitionsName.append("")
-            for item in items:
-                if item not in str_vector:
-                    str_vector.append(item)
-                    output_state.transitionsName[-1] += item
-            output_state.transitions.append(str_vector)
-    else:
-        for i in range(2, len(input_table) - 1):
-            if input_table[i][column] == "":
-                continue
-            items = input_table[i][column].split(',')
-            for item in items:
-                if item not in output_state.transitions[i - 2]:
-                    output_state.transitions[i - 2].append(item)
-                    output_state.transitionsName[i - 2] += item
+
+    for i in range(2, len(input_table)-1):
+        symbol = input_table[i][0]
+        target = input_table[i][column]
+        
+        if target == "":
+            continue
+            
+        items = target.split(',')
+        for item in items:
+            if item not in output_state.transitions[i-2]:
+                output_state.transitions[i-2].append(item)
+                output_state.transitionsName[i-2] += item
 
 def create_state(ecloses, input_table, output_table, e_str, line, column, output_state):
     new_state = input_table[line][column]
-    if new_state in output_state.arrOfStates:
+    if new_state in output_state.arrOfStates or new_state == "":
         return
+        
     output_state.arrOfStates.append(new_state)
     output_state.name += new_state
+    
+    # Проверка на финальное состояние
     if ecloses[new_state].fin:
         output_state.fin = True
 
+    # Создаем переходы для этого состояния
     create_transitions(ecloses, input_table, output_table, e_str, line, column, output_state)
 
-    if not ecloses[new_state].eStates:
-        return
-
+    # Добавляем ε-замыкание
     for e_state in ecloses[new_state].eStates:
         if e_state not in output_state.arrOfStates:
             create_state(ecloses, input_table, output_table, e_str, 1, ecloses[e_state].column, output_state)
 
 def create_all_states(ecloses, input_table, output_table, e_str, all_states, all_states_vector):
-    output_state = State()
-    output_state.fin = False
-    create_state(ecloses, input_table, output_table, e_str, 1, 1, output_state)
-    all_states.append(output_state)
-    all_states_vector[tuple(output_state.arrOfStates)] = "S" + str(len(all_states_vector))
+    # Начальное состояние - ε-замыкание первого состояния
+    initial_state = State()
+    create_state(ecloses, input_table, output_table, e_str, 1, 1, initial_state)
+    all_states.append(initial_state)
+    all_states_vector[tuple(sorted(initial_state.arrOfStates))] = "S0"
 
+    # Обработка всех состояний в очереди
     i = 0
     while i < len(all_states):
-        for j in range(len(all_states[i].transitions)):
-            new_vector = all_states[i].transitions[j].copy()
-            name = all_states[i].transitionsName[j]
-            if not is_in_vector(all_states_vector, new_vector, ecloses, name) and new_vector:
+        current_state = all_states[i]
+        
+        # Обрабатываем все переходы для текущего состояния
+        for j in range(len(current_state.transitions)):
+            new_vector = current_state.transitions[j].copy()
+            name = current_state.transitionsName[j]
+            
+            if not new_vector:
+                continue
+                
+            # Проверяем ε-замыкание для новых состояний
+            temp_vector = new_vector.copy()
+            for state in new_vector:
+                if state in ecloses:
+                    for e_state in ecloses[state].eStates:
+                        if e_state not in temp_vector:
+                            temp_vector.append(e_state)
+            
+            # Проверяем, есть ли уже такое состояние
+            found = False
+            for states, state_name in all_states_vector.items():
+                if set(states) == set(temp_vector):
+                    current_state.transitionsName[j] = state_name
+                    found = True
+                    break
+                    
+            if not found and temp_vector:
+                # Создаем новое состояние
                 new_state = State()
-                new_state.fin = False
-                for state in new_vector:
-                    column = ecloses[state].column
-                    create_state(ecloses, input_table, output_table, e_str, 1, column, new_state)
-                if tuple(new_state.arrOfStates) not in all_states_vector:
-                    all_states_vector[tuple(new_state.arrOfStates)] = "S" + str(len(all_states_vector))
+                for state in temp_vector:
+                    create_state(ecloses, input_table, output_table, e_str, 1, ecloses[state].column, new_state)
+                
+                # Добавляем новое состояние
+                state_key = tuple(sorted(new_state.arrOfStates))
+                if state_key not in all_states_vector:
+                    new_state_name = f"S{len(all_states_vector)}"
+                    all_states_vector[state_key] = new_state_name
                     all_states.append(new_state)
+                    current_state.transitionsName[j] = new_state_name
         i += 1
 
-    for states, name in all_states_vector.items():
-        print(" ".join(states), "-", name)
-
 def handle_machine(ecloses, input_table, output_table, e_str):
-    output_table.append([""])
-    output_table.append([""])
-
-    for i in range(2, len(input_table) - 1):
+    # Инициализация выходной таблицы
+    output_table.append([""])  # Строка финальных состояний
+    output_table.append([""])  # Строка имен состояний
+    
+    # Добавляем символы в первый столбец
+    for i in range(2, len(input_table)-1):
         output_table.append([input_table[i][0]])
 
     all_states = []
     all_states_vector = {}
     create_all_states(ecloses, input_table, output_table, e_str, all_states, all_states_vector)
 
-    for state in all_states:
-        output_table[1].append(all_states_vector[tuple(state.arrOfStates)])
+    # Заполняем заголовки состояний
+    for state_key, state_name in sorted(all_states_vector.items(), key=lambda x: x[1]):
+        output_table[1].append(state_name)
+        # Помечаем финальные состояния
+        if any(s in ecloses and ecloses[s].fin for s in state_key):
+            output_table[0].append("F")
+        else:
+            output_table[0].append("")
 
-    output_table[0] = [""] * len(output_table[1])
-
-    for state in all_states:
+    # Заполняем таблицу переходов
+    for state_key, state_name in sorted(all_states_vector.items(), key=lambda x: x[1]):
+        state = next(s for s in all_states if tuple(sorted(s.arrOfStates)) == state_key)
+        
         for i in range(2, len(output_table)):
-            if not state.transitionsName[i - 2]:
-                output_table[i].append("")  # Пустая строка вместо "-"
+            if i-2 < len(state.transitionsName) and state.transitionsName[i-2]:
+                output_table[i].append(state.transitionsName[i-2])
             else:
-                try:
-                    output_table[i].append(all_states_vector[tuple(state.transitions[i - 2])])
-                except KeyError:
-                    output_table[i].append("")  # Пустая строка при ошибке
-
-    for state in all_states:
-        if state.fin:
-            try:
-                col_index = output_table[1].index(all_states_vector[tuple(state.arrOfStates)])
-                output_table[0][col_index] = "F"
-            except ValueError:
-                pass
+                output_table[i].append("")
 
 def create_ecloses(ecloses, input_table, e_str):
+    # Находим строку с ε-переходами
     for i in range(len(input_table)):
         if input_table[i][0].lower() in ("e", "ε"):
             e_str = i
@@ -173,16 +193,21 @@ def create_ecloses(ecloses, input_table, e_str):
     else:
         return False
 
-    for i in range(1, len(input_table[1])):
-        fin = input_table[0][i] == "F"
+    # Создаем ε-замыкания для каждого состояния
+    for col in range(1, len(input_table[1])):
+        state_name = input_table[1][col]
+        if state_name == "":
+            continue
+            
         eclose = Eclose()
-        eclose.state = input_table[1][i]
-        eclose.column = i
-        eclose.fin = fin
+        eclose.state = state_name
+        eclose.column = col
+        eclose.fin = (input_table[0][col] == "F")
 
-        if input_table[e_str][i] not in ["", "-"]:
-            items = input_table[e_str][i].split(',')
-            eclose.eStates.extend(items)
+        # Добавляем ε-переходы
+        if input_table[e_str][col] not in ["", "-"]:
+            items = input_table[e_str][col].split(',')
+            eclose.eStates.extend([item.strip() for item in items if item.strip()])
 
         ecloses[eclose.state] = eclose
 
@@ -190,7 +215,7 @@ def create_ecloses(ecloses, input_table, e_str):
 
 def main():
     if len(sys.argv) != 3:
-        print("Invalid input format")
+        print("Usage: python lab4.py <input_file> <output_file>")
         return
 
     input_file = sys.argv[1]
@@ -198,14 +223,14 @@ def main():
 
     try:
         input_table = read_table(input_file)
-    except:
-        print("Error opening input file")
+    except Exception as e:
+        print(f"Error reading input file: {e}")
         return
 
     ecloses = {}
     e_str = 0
     if not create_ecloses(ecloses, input_table, e_str):
-        print("Error file format. There isn't empty symbols!")
+        print("Error: Input file must contain ε-transitions line (starting with 'e' or 'ε')")
         return
 
     output_table = []
@@ -213,8 +238,8 @@ def main():
 
     try:
         write_table(output_file, output_table)
-    except:
-        print("Error writing to output file")
+    except Exception as e:
+        print(f"Error writing output file: {e}")
         return
 
 if __name__ == "__main__":
