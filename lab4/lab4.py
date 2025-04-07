@@ -100,7 +100,8 @@ def create_state(ecloses, input_table, output_table, e_str, line, column, output
         return
 
     for e_state in ecloses[new_state].eStates:
-        create_state(ecloses, input_table, output_table, e_str, 1, ecloses[e_state].column, output_state)
+        if e_state not in output_state.arrOfStates:
+            create_state(ecloses, input_table, output_table, e_str, 1, ecloses[e_state].column, output_state)
 
 def create_all_states(ecloses, input_table, output_table, e_str, all_states, all_states_vector):
     output_state = State()
@@ -117,13 +118,12 @@ def create_all_states(ecloses, input_table, output_table, e_str, all_states, all
             if not is_in_vector(all_states_vector, new_vector, ecloses, name) and new_vector:
                 new_state = State()
                 new_state.fin = False
-
                 for state in new_vector:
                     column = ecloses[state].column
                     create_state(ecloses, input_table, output_table, e_str, 1, column, new_state)
-
-                all_states_vector[tuple(new_state.arrOfStates)] = "S" + str(len(all_states_vector))
-                all_states.append(new_state)
+                if tuple(new_state.arrOfStates) not in all_states_vector:
+                    all_states_vector[tuple(new_state.arrOfStates)] = "S" + str(len(all_states_vector))
+                    all_states.append(new_state)
         i += 1
 
     for states, name in all_states_vector.items():
@@ -148,24 +148,26 @@ def handle_machine(ecloses, input_table, output_table, e_str):
     for state in all_states:
         for i in range(2, len(output_table)):
             if not state.transitionsName[i - 2]:
-                output_table[i].append("")
+                output_table[i].append("-")
             else:
-                output_table[i].append(all_states_vector[tuple(state.transitions[i - 2])])
+                try:
+                    output_table[i].append(all_states_vector[tuple(state.transitions[i - 2])])
+                except KeyError:
+                    output_table[i].append("-")
 
-    is_f_added = False
     for state in all_states:
-        if state.fin and not is_f_added:
+        if state.fin:
             try:
                 col_index = output_table[1].index(all_states_vector[tuple(state.arrOfStates)])
-                if col_index == len(output_table[0]) - 1:
-                    output_table[0][col_index] = "F"
-                    is_f_added = True
+                output_table[0][col_index] = "F"
             except ValueError:
                 pass
 
 def create_ecloses(ecloses, input_table, e_str):
-    if input_table[-1][0].lower() in ("e", "ε"):  # Поддержка и "e", и "ε"
-        e_str = len(input_table) - 1
+    for i in range(len(input_table)):
+        if input_table[i][0].lower() in ("e", "ε"):
+            e_str = i
+            break
     else:
         return False
 
