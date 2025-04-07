@@ -24,14 +24,16 @@ def read_table(input_file):
             if line.endswith(';'):
                 line += " "
             items = line.split(';')
-            items = [item.strip() if item.strip() != "" or i == 0 else "-" for i, item in enumerate(items)]
+            items = [item.strip() if item.strip() != "" or i == 0 else "" for i, item in enumerate(items)]
             input_table.append(items)
     return input_table
 
 def write_table(output_file, output_table):
     with open(output_file, 'w') as f:
         for row in output_table:
-            f.write(";".join(row) + "\n")
+            # Заменяем все None и "-" на пустые строки
+            cleaned_row = [cell if cell not in ["-", None] else "" for cell in row]
+            f.write(";".join(cleaned_row) + "\n")
 
 def is_in_vector(all_states_vector, new_vector, ecloses, name):
     if not all_states_vector:
@@ -39,7 +41,7 @@ def is_in_vector(all_states_vector, new_vector, ecloses, name):
 
     i = 0
     while i < len(new_vector):
-        if new_vector[i] == "-":
+        if new_vector[i] == "":
             del new_vector[i]
             continue
         if new_vector[i] not in ecloses:
@@ -63,7 +65,7 @@ def create_transitions(ecloses, input_table, output_table, e_str, line, column, 
     if not output_state.transitions:
         for i in range(2, len(input_table) - 1):
             str_vector = []
-            if input_table[i][column] == "-":
+            if input_table[i][column] == "":
                 output_state.transitions.append(str_vector)
                 output_state.transitionsName.append("")
                 continue
@@ -77,7 +79,7 @@ def create_transitions(ecloses, input_table, output_table, e_str, line, column, 
             output_state.transitions.append(str_vector)
     else:
         for i in range(2, len(input_table) - 1):
-            if input_table[i][column] == "-":
+            if input_table[i][column] == "":
                 continue
             items = input_table[i][column].split(',')
             for item in items:
@@ -148,12 +150,12 @@ def handle_machine(ecloses, input_table, output_table, e_str):
     for state in all_states:
         for i in range(2, len(output_table)):
             if not state.transitionsName[i - 2]:
-                output_table[i].append("-")
+                output_table[i].append("")  # Пустая строка вместо "-"
             else:
                 try:
                     output_table[i].append(all_states_vector[tuple(state.transitions[i - 2])])
                 except KeyError:
-                    output_table[i].append("-")
+                    output_table[i].append("")  # Пустая строка при ошибке
 
     for state in all_states:
         if state.fin:
