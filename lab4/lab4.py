@@ -37,7 +37,6 @@ def is_in_vector(all_states_vector, new_vector, ecloses, name):
     if not all_states_vector:
         return False
 
-    # Создаем временную копию для обработки
     temp_vector = new_vector.copy()
     i = 0
     while i < len(temp_vector):
@@ -63,12 +62,11 @@ def is_in_vector(all_states_vector, new_vector, ecloses, name):
 
 def create_transitions(ecloses, input_table, output_table, e_str, line, column, output_state):
     if not output_state.transitions:
-        # Инициализация переходов
-        for _ in range(len(input_table)-3):  # Количество символов (строки кроме заголовков)
+        for _ in range(len(input_table)-2):
             output_state.transitions.append([])
             output_state.transitionsName.append("")
 
-    for i in range(2, len(input_table)-1):
+    for i in range(2, len(input_table)):
         symbol = input_table[i][0]
         target = input_table[i][column]
         
@@ -89,31 +87,25 @@ def create_state(ecloses, input_table, output_table, e_str, line, column, output
     output_state.arrOfStates.append(new_state)
     output_state.name += new_state
     
-    # Проверка на финальное состояние
     if ecloses[new_state].fin:
         output_state.fin = True
 
-    # Создаем переходы для этого состояния
     create_transitions(ecloses, input_table, output_table, e_str, line, column, output_state)
 
-    # Добавляем ε-замыкание
     for e_state in ecloses[new_state].eStates:
         if e_state not in output_state.arrOfStates:
             create_state(ecloses, input_table, output_table, e_str, 1, ecloses[e_state].column, output_state)
 
 def create_all_states(ecloses, input_table, output_table, e_str, all_states, all_states_vector):
-    # Начальное состояние - ε-замыкание первого состояния
     initial_state = State()
     create_state(ecloses, input_table, output_table, e_str, 1, 1, initial_state)
     all_states.append(initial_state)
     all_states_vector[tuple(sorted(initial_state.arrOfStates))] = "S0"
 
-    # Обработка всех состояний в очереди
     i = 0
     while i < len(all_states):
         current_state = all_states[i]
         
-        # Обрабатываем все переходы для текущего состояния
         for j in range(len(current_state.transitions)):
             new_vector = current_state.transitions[j].copy()
             name = current_state.transitionsName[j]
@@ -121,7 +113,6 @@ def create_all_states(ecloses, input_table, output_table, e_str, all_states, all
             if not new_vector:
                 continue
                 
-            # Проверяем ε-замыкание для новых состояний
             temp_vector = new_vector.copy()
             for state in new_vector:
                 if state in ecloses:
@@ -129,7 +120,6 @@ def create_all_states(ecloses, input_table, output_table, e_str, all_states, all
                         if e_state not in temp_vector:
                             temp_vector.append(e_state)
             
-            # Проверяем, есть ли уже такое состояние
             found = False
             for states, state_name in all_states_vector.items():
                 if set(states) == set(temp_vector):
@@ -138,12 +128,10 @@ def create_all_states(ecloses, input_table, output_table, e_str, all_states, all
                     break
                     
             if not found and temp_vector:
-                # Создаем новое состояние
                 new_state = State()
                 for state in temp_vector:
                     create_state(ecloses, input_table, output_table, e_str, 1, ecloses[state].column, new_state)
                 
-                # Добавляем новое состояние
                 state_key = tuple(sorted(new_state.arrOfStates))
                 if state_key not in all_states_vector:
                     new_state_name = f"S{len(all_states_vector)}"
@@ -153,28 +141,23 @@ def create_all_states(ecloses, input_table, output_table, e_str, all_states, all
         i += 1
 
 def handle_machine(ecloses, input_table, output_table, e_str):
-    # Инициализация выходной таблицы
-    output_table.append([""])  # Строка финальных состояний
-    output_table.append([""])  # Строка имен состояний
+    output_table.append([""])
+    output_table.append([""])
     
-    # Добавляем символы в первый столбец
-    for i in range(2, len(input_table)-1):
+    for i in range(2, len(input_table)):
         output_table.append([input_table[i][0]])
 
     all_states = []
     all_states_vector = {}
     create_all_states(ecloses, input_table, output_table, e_str, all_states, all_states_vector)
 
-    # Заполняем заголовки состояний
     for state_key, state_name in sorted(all_states_vector.items(), key=lambda x: x[1]):
         output_table[1].append(state_name)
-        # Помечаем финальные состояния
         if any(s in ecloses and ecloses[s].fin for s in state_key):
             output_table[0].append("F")
         else:
             output_table[0].append("")
 
-    # Заполняем таблицу переходов
     for state_key, state_name in sorted(all_states_vector.items(), key=lambda x: x[1]):
         state = next(s for s in all_states if tuple(sorted(s.arrOfStates)) == state_key)
         
@@ -184,16 +167,27 @@ def handle_machine(ecloses, input_table, output_table, e_str):
             else:
                 output_table[i].append("")
 
-def create_ecloses(ecloses, input_table, e_str):
-    # Находим строку с ε-переходами
+def create_ecloses(ecloses, input_table):
+    e_str = -1
     for i in range(len(input_table)):
         if input_table[i][0].lower() in ("e", "ε"):
             e_str = i
             break
-    else:
-        return False
+    
+    # Если нет ε-переходов, создаем пустые ε-замыкания
+    if e_str == -1:
+        for col in range(1, len(input_table[1])):
+            state_name = input_table[1][col]
+            if state_name == "":
+                continue
+                
+            eclose = Eclose()
+            eclose.state = state_name
+            eclose.column = col
+            eclose.fin = (input_table[0][col] == "F")
+            ecloses[eclose.state] = eclose
+        return True
 
-    # Создаем ε-замыкания для каждого состояния
     for col in range(1, len(input_table[1])):
         state_name = input_table[1][col]
         if state_name == "":
@@ -204,7 +198,6 @@ def create_ecloses(ecloses, input_table, e_str):
         eclose.column = col
         eclose.fin = (input_table[0][col] == "F")
 
-        # Добавляем ε-переходы
         if input_table[e_str][col] not in ["", "-"]:
             items = input_table[e_str][col].split(',')
             eclose.eStates.extend([item.strip() for item in items if item.strip()])
@@ -228,13 +221,11 @@ def main():
         return
 
     ecloses = {}
-    e_str = 0
-    if not create_ecloses(ecloses, input_table, e_str):
-        print("Error: Input file must contain ε-transitions line (starting with 'e' or 'ε')")
-        return
+    if not create_ecloses(ecloses, input_table):
+        print("Warning: No ε-transitions found, processing as regular NFA")
 
     output_table = []
-    handle_machine(ecloses, input_table, output_table, e_str)
+    handle_machine(ecloses, input_table, output_table, -1)
 
     try:
         write_table(output_file, output_table)
