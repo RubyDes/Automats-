@@ -18,16 +18,13 @@ def write_table(filename, table):
             f.write(';'.join(row) + '\n')
 
 def parse_automaton(input_table):
-    # Find epsilon row
+    # Try to find epsilon row (optional)
     epsilon_row = -1
     for i, row in enumerate(input_table):
-        if row[0].lower() in ('ε', 'e'):
+        if row and row[0].lower() in ('ε', 'e'):
             epsilon_row = i
             break
     
-    if epsilon_row == -1:
-        raise ValueError("No epsilon transitions row found")
-
     # Parse states
     states = {}
     header = input_table[1]
@@ -40,8 +37,8 @@ def parse_automaton(input_table):
         state.name = state_name
         state.is_final = (input_table[0][col].strip() == 'F') if col < len(input_table[0]) else False
         
-        # Parse epsilon transitions
-        if col < len(input_table[epsilon_row]):
+        # Parse epsilon transitions if epsilon row exists
+        if epsilon_row != -1 and col < len(input_table[epsilon_row]):
             epsilons = input_table[epsilon_row][col].strip()
             if epsilons and epsilons != '-':
                 state.epsilon = [s.strip() for s in epsilons.split(',') if s.strip()]
@@ -50,6 +47,9 @@ def parse_automaton(input_table):
         for row in range(2, len(input_table)):
             if row == epsilon_row:
                 continue
+            if not input_table[row]:
+                continue
+                
             symbol = input_table[row][0].strip()
             if not symbol:
                 continue
@@ -64,6 +64,9 @@ def parse_automaton(input_table):
     return states
 
 def epsilon_closure(states, start_state):
+    if start_state not in states:
+        return frozenset()
+        
     closure = set()
     queue = deque()
     queue.append(start_state)
@@ -81,7 +84,16 @@ def epsilon_closure(states, start_state):
     return frozenset(closure)
 
 def build_dfa(nfa_states):
-    initial_closure = epsilon_closure(nfa_states, next(iter(nfa_states)))
+    if not nfa_states:
+        return {}
+    
+    # Get initial state(s) - handle both with and without epsilon transitions
+    initial_state = next(iter(nfa_states))
+    initial_closure = epsilon_closure(nfa_states, initial_state)
+    
+    if not initial_closure:  # No epsilon transitions case
+        initial_closure = frozenset([initial_state])
+    
     dfa_states = {}
     state_queue = deque()
     
@@ -93,6 +105,7 @@ def build_dfa(nfa_states):
     }
     state_queue.append(initial_closure)
     
+    # Get all symbols from the NFA
     symbol_set = set()
     for state in nfa_states.values():
         symbol_set.update(state.transitions.keys())
@@ -110,10 +123,18 @@ def build_dfa(nfa_states):
             if not move_set:
                 continue
                 
-            # Epsilon closure of move set
+            # Epsilon closure of move set (if any epsilon transitions exist)
             new_closure = set()
             for state in move_set:
-                new_closure.update(epsilon_closure(nfa_states, state))
+                closure = epsilon_closure(nfa_states, state)
+                if closure:
+                    new_closure.update(closure)
+                else:
+                    new_closure.add(state)
+            
+            if not new_closure:
+                continue
+                
             new_closure = frozenset(new_closure)
             
             # Add new state if needed
@@ -162,10 +183,14 @@ def main():
         # Convert NFA to DFA
         dfa_states = build_dfa(nfa_states)
         
+        if not dfa_states:
+            print("Error: No valid states found in input")
+            return
+        
         # Get all symbols from input
         symbols = set()
         for row in input_table[2:]:
-            if row[0].lower() not in ('ε', 'e'):
+            if row and row[0].lower() not in ('ε', 'e'):
                 symbols.add(row[0])
         
         # Create output table
