@@ -3,7 +3,6 @@ from collections import defaultdict, deque
 
 class State:
     def __init__(self):
-        self.name = ""
         self.transitions = defaultdict(list)
         self.epsilon = []
         self.is_final = False
@@ -18,67 +17,67 @@ def write_table(filename, table):
             f.write(';'.join(row) + '\n')
 
 def parse_automaton(input_table):
-    # Try to find epsilon row (optional)
+    states = {}
     epsilon_row = -1
+    
+    # Находим строку с epsilon-переходами
     for i, row in enumerate(input_table):
         if row and row[0].lower() in ('ε', 'e'):
             epsilon_row = i
             break
     
-    # Parse states
-    states = {}
-    header = input_table[1]
-    for col in range(1, len(header)):
-        state_name = header[col].strip()
+    # Парсим заголовок с именами состояний
+    if len(input_table) < 2:
+        return states
+    
+    for col in range(1, len(input_table[1])):
+        state_name = input_table[1][col].strip()
         if not state_name:
             continue
             
         state = State()
-        state.name = state_name
-        state.is_final = (input_table[0][col].strip() == 'F') if col < len(input_table[0]) else False
+        state.is_final = (col < len(input_table[0]) and (input_table[0][col].strip() == 'F'))
         
-        # Parse epsilon transitions if epsilon row exists
+        # Парсим epsilon-переходы если есть
         if epsilon_row != -1 and col < len(input_table[epsilon_row]):
             epsilons = input_table[epsilon_row][col].strip()
-            if epsilons and epsilons != '-':
+            if epsilons:
                 state.epsilon = [s.strip() for s in epsilons.split(',') if s.strip()]
-        
-        # Parse regular transitions
-        for row in range(2, len(input_table)):
-            if row == epsilon_row:
-                continue
-            if not input_table[row]:
-                continue
-                
-            symbol = input_table[row][0].strip()
-            if not symbol:
-                continue
-                
-            if col < len(input_table[row]):
-                targets = input_table[row][col].strip()
-                if targets and targets != '-':
-                    state.transitions[symbol] = [s.strip() for s in targets.split(',') if s.strip()]
         
         states[state_name] = state
     
+    # Парсим обычные переходы
+    for row in range(2, len(input_table)):
+        if not input_table[row] or row == epsilon_row:
+            continue
+            
+        symbol = input_table[row][0].strip()
+        if not symbol:
+            continue
+            
+        for col in range(1, len(input_table[row])):
+            if col >= len(input_table[1]):
+                continue
+                
+            state_name = input_table[1][col].strip()
+            if not state_name:
+                continue
+                
+            targets = input_table[row][col].strip()
+            if targets:
+                states[state_name].transitions[symbol] = [s.strip() for s in targets.split(',') if s.strip()]
+    
     return states
 
-def epsilon_closure(states, start_state):
-    if start_state not in states:
-        return frozenset()
-        
-    closure = set()
-    queue = deque()
-    queue.append(start_state)
+def epsilon_closure(states, state_set):
+    closure = set(state_set)
+    queue = deque(state_set)
     
     while queue:
         current = queue.popleft()
-        if current in closure:
-            continue
-            
-        closure.add(current)
         for neighbor in states[current].epsilon:
             if neighbor not in closure:
+                closure.add(neighbor)
                 queue.append(neighbor)
     
     return frozenset(closure)
@@ -87,17 +86,14 @@ def build_dfa(nfa_states):
     if not nfa_states:
         return {}
     
-    # Get initial state(s) - handle both with and without epsilon transitions
+    # Находим начальное состояние (первое в списке)
     initial_state = next(iter(nfa_states))
-    initial_closure = epsilon_closure(nfa_states, initial_state)
-    
-    if not initial_closure:  # No epsilon transitions case
-        initial_closure = frozenset([initial_state])
+    initial_closure = epsilon_closure(nfa_states, {initial_state})
     
     dfa_states = {}
     state_queue = deque()
     
-    # Create initial DFA state
+    # Создаем первое состояние DFA
     dfa_states[initial_closure] = {
         'name': 'S0',
         'transitions': {},
@@ -105,39 +101,28 @@ def build_dfa(nfa_states):
     }
     state_queue.append(initial_closure)
     
-    # Get all symbols from the NFA
-    symbol_set = set()
+    # Собираем все символы алфавита
+    symbols = set()
     for state in nfa_states.values():
-        symbol_set.update(state.transitions.keys())
+        symbols.update(state.transitions.keys())
     
-    # Process all states
+    # Обрабатываем все состояния
     while state_queue:
         current_closure = state_queue.popleft()
         
-        for symbol in symbol_set:
-            # Move on symbol
-            move_set = set()
+        for symbol in symbols:
+            # Вычисляем move по символу
+            move = set()
             for state in current_closure:
-                move_set.update(nfa_states[state].transitions.get(symbol, []))
+                move.update(nfa_states[state].transitions.get(symbol, []))
             
-            if not move_set:
+            if not move:
                 continue
                 
-            # Epsilon closure of move set (if any epsilon transitions exist)
-            new_closure = set()
-            for state in move_set:
-                closure = epsilon_closure(nfa_states, state)
-                if closure:
-                    new_closure.update(closure)
-                else:
-                    new_closure.add(state)
+            # Вычисляем epsilon-замыкание
+            new_closure = epsilon_closure(nfa_states, move)
             
-            if not new_closure:
-                continue
-                
-            new_closure = frozenset(new_closure)
-            
-            # Add new state if needed
+            # Если такого состояния еще нет, добавляем
             if new_closure not in dfa_states:
                 state_name = f'S{len(dfa_states)}'
                 dfa_states[new_closure] = {
@@ -147,21 +132,20 @@ def build_dfa(nfa_states):
                 }
                 state_queue.append(new_closure)
             
-            # Add transition
+            # Добавляем переход
             dfa_states[current_closure]['transitions'][symbol] = dfa_states[new_closure]['name']
     
     return dfa_states
 
 def create_output_table(dfa_states, symbols):
-    # Prepare header
     output = [[''], ['']]
     
-    # Add state names to header
+    # Заголовок с именами состояний
     for state in dfa_states.values():
         output[0].append('F' if state['is_final'] else '')
         output[1].append(state['name'])
     
-    # Add transitions for each symbol
+    # Добавляем переходы для каждого символа
     for symbol in sorted(symbols):
         row = [symbol]
         for state in dfa_states.values():
@@ -176,27 +160,20 @@ def main():
         return
     
     try:
-        # Read and parse input
         input_table = read_table(sys.argv[1])
         nfa_states = parse_automaton(input_table)
-        
-        # Convert NFA to DFA
         dfa_states = build_dfa(nfa_states)
         
         if not dfa_states:
             print("Error: No valid states found in input")
             return
         
-        # Get all symbols from input
         symbols = set()
         for row in input_table[2:]:
             if row and row[0].lower() not in ('ε', 'e'):
                 symbols.add(row[0])
         
-        # Create output table
         output_table = create_output_table(dfa_states, symbols)
-        
-        # Write output
         write_table(sys.argv[2], output_table)
         print("Conversion completed successfully!")
         
