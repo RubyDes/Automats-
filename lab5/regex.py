@@ -1,6 +1,5 @@
 import csv
 import sys
-from graphviz import Digraph
 from collections import defaultdict
 
 
@@ -245,40 +244,7 @@ def save_dfa_to_csv(dfa_states, dfa_transitions, output_file):
         writer.writerows(transition_rows)
 
 
-def visualize_dfa(dfa_states, dfa_transitions, output_file=None):
-    dot = Digraph(comment='DFA', format='png')
-    dot.attr(rankdir='LR')
-
-    for state in dfa_states:
-        if state["is_final"]:
-            dot.node(state["name"], shape='doublecircle')
-        else:
-            dot.node(state["name"], shape='circle')
-
-    initial_state = "S0"
-    dot.node('start', shape='point')
-    dot.edge('start', initial_state)
-
-    transitions_map = defaultdict(dict)
-    for transition in dfa_transitions:
-        from_state = transition["from"]
-        for symbol, to_state in transition["transitions"].items():
-            if symbol in transitions_map[(from_state, to_state)]:
-                transitions_map[(from_state, to_state)][symbol] += f",{symbol}"
-            else:
-                transitions_map[(from_state, to_state)][symbol] = symbol
-    
-    for (from_state, to_state), symbols in transitions_map.items():
-        label = ",".join(sorted(symbols.keys()))
-        dot.edge(from_state, to_state, label=label)
-    
-    if output_file:
-        dot.render(output_file, view=True)
-    else:
-        return dot
-
-
-def process_regex_pattern(regex, output_csv=None, output_image=None):
+def process_regex_pattern(regex, output_csv=None):
     tree = regex_to_tree(regex)
     nfa = construct_automaton(tree)
     
@@ -287,23 +253,19 @@ def process_regex_pattern(regex, output_csv=None, output_image=None):
     if output_csv:
         save_dfa_to_csv(dfa_states, dfa_transitions, output_csv)
     
-    if output_image:
-        visualize_dfa(dfa_states, dfa_transitions, output_image)
-    else:
-        return visualize_dfa(dfa_states, dfa_transitions)
+    return dfa_states, dfa_transitions
 
 
 def main():
     if len(sys.argv) < 2:
-        print(f"Usage: {sys.argv[0]} <regex pattern> [output_csv] [output_image]")
+        print(f"Usage: {sys.argv[0]} <regex pattern> [output_csv]")
         return 1
 
     regex_pattern = sys.argv[1]
     output_csv = sys.argv[2] if len(sys.argv) > 2 else None
-    output_image = sys.argv[3] if len(sys.argv) > 3 else None
 
     try:
-        process_regex_pattern(regex_pattern, output_csv, output_image)
+        process_regex_pattern(regex_pattern, output_csv)
     except Exception as e:
         print(f"Error: {str(e)}")
         return 1
